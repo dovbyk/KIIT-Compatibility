@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, RecaptchaVerifier, signInWithPhoneNumber, sendEmailVerification } from 'firebase/auth';
+import { getAuth, RecaptchaVerifier, signInWithPhoneNumber, sendEmailVerification, signInAnonymously } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDbvhMead4EtiK4IDTzjCwnEnslPm0Wpm4",
@@ -12,4 +12,4 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export { RecaptchaVerifier, signInWithPhoneNumber, sendEmailVerification };
+export { RecaptchaVerifier, signInWithPhoneNumber, sendEmailVerification, signInAnonymously };
