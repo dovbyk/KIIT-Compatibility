@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'; // Add useCallback
+import { useState, useEffect, useCallback, useRef } from 'react'; // Add useRef
 import axios from 'axios';
 import { useNavigate, Link } from 'react-router-dom';
 import { auth, RecaptchaVerifier, signInWithPhoneNumber } from '../firebase';
@@ -16,17 +16,23 @@ const Register = () => {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const navigate = useNavigate();
+  const recaptchaRef = useRef(null); // Ref to track container
 
-  const validateEmail = (email) => /^[0-9]+@kiit\.ac\.in$/.test(email);
+  const validateEmail = (email) => /^[0-9]{8}@kiit\.ac\.in$/.test(email);
   const validatePhone = (phoneNumber) => /^\d{10}$/.test(phoneNumber);
 
   const sendPhoneOtp = useCallback(async (phone) => {
+    if (!recaptchaRef.current) {
+      console.error('Recaptcha container not ready yet!');
+      setError('reCAPTCHA not loaded—try refreshing, mate!');
+      return;
+    }
     try {
-      const verifier = new RecaptchaVerifier('recaptcha-container', {
+      const verifier = new RecaptchaVerifier(recaptchaRef.current, {
         size: 'invisible',
         callback: () => console.log('Recaptcha solved—phone OTP on the way!')
       }, auth);
-      await verifier.render(); // Ensure it’s ready
+      await verifier.render(); // Ensure it’s in DOM
       const fullPhoneNumber = `+91${phone}`;
       const phoneResult = await signInWithPhoneNumber(auth, fullPhoneNumber, verifier);
       window.confirmationResult = phoneResult;
@@ -45,17 +51,11 @@ const Register = () => {
       const storedPhone = window.localStorage.getItem('phoneForSignIn');
       if (email && storedPhone) {
         signInWithEmailLink(auth, email, window.location.href)
-          .then(async (result) => {
+          .then((result) => {
             console.log('Email verified, user signed in:', result.user);
             setEmail(result.user.email);
             setEmailLinkSent(true);
-
-            // Send OTP after email verification
-            await sendPhoneOtp(storedPhone);
-
-            // Clean up after success
-            window.localStorage.removeItem('emailForSignIn');
-            window.localStorage.removeItem('phoneForSignIn');
+            // Don’t send OTP yet—wait for DOM
           })
           .catch((err) => {
             console.error('Email sign-in error:', err);
@@ -65,7 +65,20 @@ const Register = () => {
         setError('Missing email or phone—start over, mate!');
       }
     }
-  }, [sendPhoneOtp]); // Add dependency
+  }, []);
+
+  useEffect(() => {
+    if (emailLinkSent && recaptchaRef.current) {
+      const storedPhone = window.localStorage.getItem('phoneForSignIn');
+      if (storedPhone) {
+        sendPhoneOtp(storedPhone).then(() => {
+          // Clean up after success
+          window.localStorage.removeItem('emailForSignIn');
+          window.localStorage.removeItem('phoneForSignIn');
+        });
+      }
+    }
+  }, [emailLinkSent, sendPhoneOtp]); // Trigger when emailLinkSent and DOM ready
 
   const handleSendEmailLink = async (e) => {
     e.preventDefault();
@@ -163,7 +176,7 @@ const Register = () => {
           </form>
         ) : (
           <form onSubmit={handleVerifyAndRegister}>
-            <div id="recaptcha-container"></div>
+            <div ref={recaptchaRef} id="recaptcha-container"></div> {/* Use ref */}
             <p className="text-sm text-gray-600 mb-4">
               {phoneOtpSent ? 'OTP sent—enter it below!' : 'Waiting for email verification...'}
             </p>
