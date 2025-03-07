@@ -30,7 +30,7 @@ const Register = () => {
       const userCredential = await auth.signInAnonymously(); // Temp user
       await auth.currentUser.updateEmail(email);
       await sendEmailVerification(auth.currentUser, {
-        url: 'http://localhost:5173/register',
+        url: 'https://kiit-compatibility.vercel.app/register',
         handleCodeInApp: true
       });
       console.log('Email verification link sent to:', email);
