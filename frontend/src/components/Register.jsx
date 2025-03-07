@@ -87,7 +87,7 @@ const Register = () => {
         isVerified: true
       };
       console.log('Sending to backend:', payload);
-      const res = await axios.post('http://localhost:5000/auth/register-firebase', payload);
+      const res = await axios.post(`${process.env.REACT_APP_API_URL}/auth/register-firebase`, payload);    
       console.log('Backend response:', res.data);
       setMessage(res.data.msg);
       setTimeout(() => navigate('/'), 2000);
