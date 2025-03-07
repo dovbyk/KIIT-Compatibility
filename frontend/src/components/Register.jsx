@@ -23,39 +23,40 @@ const Register = () => {
   useEffect(() => {
     if (isSignInWithEmailLink(auth, window.location.href)) {
       const email = window.localStorage.getItem('emailForSignIn');
-      if (email) {
+      const storedPhone = window.localStorage.getItem('phoneForSignIn');
+      if (email && storedPhone) {
         signInWithEmailLink(auth, email, window.location.href)
           .then(async (result) => {
-            window.localStorage.removeItem('emailForSignIn');
-            window.localStorage.removeItem('phoneForSignIn');
             console.log('Email verified, user signed in:', result.user);
             setEmail(result.user.email);
-            setEmailLinkSent(true); // Email verified
+            setEmailLinkSent(true);
 
-            // Auto-send phone OTP
-            const storedPhone = window.localStorage.getItem('phoneForSignIn');
-            if (storedPhone) {
-              try {
-                window.recaptchaVerifier = new RecaptchaVerifier('recaptcha-container', {
-                  size: 'invisible',
-                  callback: () => console.log('Recaptcha solved—phone OTP on the way!')
-                }, auth);
-                const fullPhoneNumber = `+91${storedPhone}`;
-                const phoneResult = await signInWithPhoneNumber(auth, fullPhoneNumber, window.recaptchaVerifier);
-                window.confirmationResult = phoneResult;
-                setPhoneOtpSent(true);
-                console.log('Phone OTP sent to:', fullPhoneNumber);
-                setMessage('Email verified—OTP sent, enter it and set your password!');
-              } catch (err) {
-                console.error('Phone OTP send error:', err);
-                setError(`Failed to send phone OTP—${err.message}`);
-              }
-            }
-          })
-          .catch((err) => {
-            console.error('Email sign-in error:', err);
-            setError('Failed to verify email link—gremlins strike again!');
-          });
+            // Don’t remove phone yet—use it first!
+            try {
+              window.recaptchaVerifier = new RecaptchaVerifier('recaptcha-container', {
+                size: 'invisible',
+                callback: () => console.log('Recaptcha solved—phone OTP on the way!')
+              }, auth);
+              const fullPhoneNumber = `+91${storedPhone}`;
+              const phoneResult = await signInWithPhoneNumber(auth, fullPhoneNumber, window.recaptchaVerifier);
+              window.confirmationResult = phoneResult;
+              setPhoneOtpSent(true); // Enable fields!
+              console.log('Phone OTP sent to:', fullPhoneNumber);
+              setMessage('Email verified—OTP sent, enter it and set your password!');
+              // Clean up after success
+              window.localStorage.removeItem('emailForSignIn');
+              window.localStorage.removeItem('phoneForSignIn');
+          } catch (err) {
+            console.error('Phone OTP send error:', err);
+            setError(`Failed to send phone OTP—${err.message}`);
+          }
+        })
+        .catch((err) => {
+          console.error('Email sign-in error:', err);
+          setError('Failed to verify email link—gremlins strike again!');
+        });
+      } else {
+        setError('Missing email or phone—start over, mate!');
       }
     }
   }, []);
@@ -128,48 +129,25 @@ const Register = () => {
           <form onSubmit={handleSendEmailLink}>
             <div className="mb-4">
               <label className="block text-gray-700 mb-1">Username</label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="w-full p-2 border rounded"
-                required
-              />
+              <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full p-2 border rounded" required />
             </div>
             <div className="mb-4">
               <label className="block text-gray-700 mb-1">Email (e.g., 22012345@kiit.ac.in)</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full p-2 border rounded"
-                required
-              />
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-2 border rounded" required />
             </div>
             <div className="mb-4">
               <label className="block text-gray-700 mb-1">Phone Number (10 digits)</label>
               <div className="flex">
                 <span className="inline-flex items-center px-3 text-gray-700 bg-gray-200 border border-r-0 rounded-l">+91</span>
-                <input
-                  type="text"
-                  value={phoneNumber}
-                  onChange={(e) => {
-                    const value = e.target.value.replace(/\D/g, '');
-                    if (value.length <= 10) setPhoneNumber(value);
-                  }}
-                  className="w-full p-2 border rounded-r"
-                  required
-                />
+                <input type="text" value={phoneNumber} onChange={(e) => {
+                  const value = e.target.value.replace(/\D/g, '');
+                  if (value.length <= 10) setPhoneNumber(value);
+                }} className="w-full p-2 border rounded-r" required />
               </div>
             </div>
             <div className="mb-6">
               <label className="block text-gray-700 mb-1">Gender</label>
-              <select
-                value={gender}
-                onChange={(e) => setGender(e.target.value)}
-                className="w-full p-2 border rounded"
-                required
-              >
+              <select value={gender} onChange={(e) => setGender(e.target.value)} className="w-full p-2 border rounded" required>
                 <option value="">Select Gender</option>
                 <option value="male">Male</option>
                 <option value="female">Female</option>
@@ -185,31 +163,13 @@ const Register = () => {
             </p>
             <div className="mb-4">
               <label className="block text-gray-700 mb-1">Phone OTP</label>
-              <input
-                type="text"
-                value={phoneOtp}
-                onChange={(e) => setPhoneOtp(e.target.value)}
-                className="w-full p-2 border rounded"
-                required
-                disabled={!phoneOtpSent} // Disable until OTP is sent
-              />
+              <input type="text" value={phoneOtp} onChange={(e) => setPhoneOtp(e.target.value)} className="w-full p-2 border rounded" required disabled={!phoneOtpSent} />
             </div>
             <div className="mb-4">
               <label className="block text-gray-700 mb-1">Set Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full p-2 border rounded"
-                required
-                disabled={!phoneOtpSent} // Disable until OTP is sent
-              />
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-2 border rounded" required disabled={!phoneOtpSent} />
             </div>
-            <button
-              type="submit"
-              className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600"
-              disabled={!phoneOtpSent} // Disable until OTP is sent
-            >
+            <button type="submit" className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600" disabled={!phoneOtpSent}>
               Verify & Register
             </button>
           </form>
