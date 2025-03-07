@@ -27,7 +27,7 @@ const Register = () => {
     }
 
     try {
-      const userCredential = await auth.signInAnonymously(); // Temp user
+      const userCredential = await signInAnonymously(auth);
       await auth.currentUser.updateEmail(email);
       await sendEmailVerification(auth.currentUser, {
         url: 'https://kiit-compatibility.vercel.app/register',
