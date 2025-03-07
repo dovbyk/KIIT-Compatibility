@@ -1,13 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate, Link } from 'react-router-dom';
-import { auth, RecaptchaVerifier, signInWithPhoneNumber, sendEmailVerification } from '../firebase';
-import { signInAnonymously, updateEmail } from 'firebase/auth'; // Added this!
+import { auth, RecaptchaVerifier, signInWithPhoneNumber } from '../firebase';
+import { sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink } from 'firebase/auth';
 
 const Register = () => {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState(''); // Just the 10 digits
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [gender, setGender] = useState('');
   const [emailLinkSent, setEmailLinkSent] = useState(false);
   const [phoneOtpSent, setPhoneOtpSent] = useState(false);
@@ -17,8 +17,48 @@ const Register = () => {
   const [message, setMessage] = useState('');
   const navigate = useNavigate();
 
-  const validateEmail = (email) => /^[0-9]+@kiit\.ac\.in$/.test(email);
+  const validateEmail = (email) => /^[0-9]{8}@kiit\.ac\.in$/.test(email);
   const validatePhone = (phoneNumber) => /^\d{10}$/.test(phoneNumber);
+
+  useEffect(() => {
+    if (isSignInWithEmailLink(auth, window.location.href)) {
+      const email = window.localStorage.getItem('emailForSignIn');
+      if (email) {
+        signInWithEmailLink(auth, email, window.location.href)
+          .then(async (result) => {
+            window.localStorage.removeItem('emailForSignIn');
+            window.localStorage.removeItem('phoneForSignIn');
+            console.log('Email verified, user signed in:', result.user);
+            setEmail(result.user.email);
+            setEmailLinkSent(true); // Email verified
+
+            // Auto-send phone OTP
+            const storedPhone = window.localStorage.getItem('phoneForSignIn');
+            if (storedPhone) {
+              try {
+                window.recaptchaVerifier = new RecaptchaVerifier('recaptcha-container', {
+                  size: 'invisible',
+                  callback: () => console.log('Recaptcha solved—phone OTP on the way!')
+                }, auth);
+                const fullPhoneNumber = `+91${storedPhone}`;
+                const phoneResult = await signInWithPhoneNumber(auth, fullPhoneNumber, window.recaptchaVerifier);
+                window.confirmationResult = phoneResult;
+                setPhoneOtpSent(true);
+                console.log('Phone OTP sent to:', fullPhoneNumber);
+                setMessage('Email verified—OTP sent, enter it and set your password!');
+              } catch (err) {
+                console.error('Phone OTP send error:', err);
+                setError(`Failed to send phone OTP—${err.message}`);
+              }
+            }
+          })
+          .catch((err) => {
+            console.error('Email sign-in error:', err);
+            setError('Failed to verify email link—gremlins strike again!');
+          });
+      }
+    }
+  }, []);
 
   const handleSendEmailLink = async (e) => {
     e.preventDefault();
@@ -28,43 +68,19 @@ const Register = () => {
     }
 
     try {
-      const userCredential = await signInAnonymously(auth);
-      await updateEmail(auth.currentUser, email);
-      await sendEmailVerification(auth.currentUser, {
+      const actionCodeSettings = {
         url: 'https://kiit-compatibility.vercel.app/register',
         handleCodeInApp: true
-      });
+      };
+      await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+      window.localStorage.setItem('emailForSignIn', email);
+      window.localStorage.setItem('phoneForSignIn', phoneNumber);
       console.log('Email verification link sent to:', email);
       setEmailLinkSent(true);
-      setMessage('Email verification link sent—click it to proceed!');
+      setMessage('Check your email for the verification link!');
     } catch (err) {
       console.error('Email link send error:', err);
       setError('Failed to send email link—gremlins at it again!');
-    }
-  };
-
-  const handleSendPhoneOtp = async (e) => {
-    e.preventDefault();
-    try {
-      await auth.currentUser.reload();
-      if (!auth.currentUser.emailVerified) {
-        setError('Click the email link first—don’t skip the queue!');
-        return;
-      }
-
-      window.recaptchaVerifier = new RecaptchaVerifier('recaptcha-container', {
-        size: 'invisible',
-        callback: () => console.log('Recaptcha solved—phone OTP on the way!')
-      }, auth);
-      const fullPhoneNumber = `+91${phoneNumber}`; // Add +91 here
-      const phoneResult = await signInWithPhoneNumber(auth, fullPhoneNumber, window.recaptchaVerifier);
-      window.confirmationResult = phoneResult;
-      setPhoneOtpSent(true);
-      console.log('Phone OTP sent to:', fullPhoneNumber);
-      setMessage('Phone OTP sent—enter it to finish!');
-    } catch (err) {
-      console.error('Phone OTP send error:', err);
-      setError(`Failed to send phone OTP—${err.message}`);
     }
   };
 
@@ -72,6 +88,10 @@ const Register = () => {
     e.preventDefault();
     if (!password) {
       setError('Set a password—don’t leave us guessing!');
+      return;
+    }
+    if (!auth.currentUser) {
+      setError('Email not verified yet—click the link first!');
       return;
     }
 
@@ -82,13 +102,13 @@ const Register = () => {
       const payload = {
         username,
         email,
-        phoneNumber: `+91${phoneNumber}`, // Add +91 for backend
+        phoneNumber: `+91${phoneNumber}`,
         gender,
         password,
         isVerified: true
       };
       console.log('Sending to backend:', payload);
-      const res = await axios.post(`${process.env.REACT_APP_API_URL}/auth/register-firebase`, payload);    
+      const res = await axios.post(`${process.env.REACT_APP_API_URL}/auth/register-firebase`, payload);
       console.log('Backend response:', res.data);
       setMessage(res.data.msg);
       setTimeout(() => navigate('/'), 2000);
@@ -134,11 +154,10 @@ const Register = () => {
                   type="text"
                   value={phoneNumber}
                   onChange={(e) => {
-                    const value = e.target.value.replace(/\D/g, ''); // Only digits
-                    if (value.length <= 10) setPhoneNumber(value); // Max 10 digits
+                    const value = e.target.value.replace(/\D/g, '');
+                    if (value.length <= 10) setPhoneNumber(value);
                   }}
-                  className="w-full p-2 border rounded-r focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="6372542699"
+                  className="w-full p-2 border rounded-r"
                   required
                 />
               </div>
@@ -156,16 +175,14 @@ const Register = () => {
                 <option value="female">Female</option>
               </select>
             </div>
-            <button type="submit" className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600">Send Email Link</button>
-          </form>
-        ) : !phoneOtpSent ? (
-          <form onSubmit={handleSendPhoneOtp}>
-            <p className="text-sm text-gray-600 mb-4">Email link sent—click it, then hit below!</p>
-            <div id="recaptcha-container"></div>
-            <button type="submit" className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600">Send Phone OTP</button>
+            <button type="submit" className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600">Verify Email</button>
           </form>
         ) : (
           <form onSubmit={handleVerifyAndRegister}>
+            <div id="recaptcha-container"></div>
+            <p className="text-sm text-gray-600 mb-4">
+              {phoneOtpSent ? 'OTP sent—enter it below!' : 'Waiting for email verification...'}
+            </p>
             <div className="mb-4">
               <label className="block text-gray-700 mb-1">Phone OTP</label>
               <input
@@ -174,6 +191,7 @@ const Register = () => {
                 onChange={(e) => setPhoneOtp(e.target.value)}
                 className="w-full p-2 border rounded"
                 required
+                disabled={!phoneOtpSent} // Disable until OTP is sent
               />
             </div>
             <div className="mb-4">
@@ -184,9 +202,16 @@ const Register = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full p-2 border rounded"
                 required
+                disabled={!phoneOtpSent} // Disable until OTP is sent
               />
             </div>
-            <button type="submit" className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600">Verify & Register</button>
+            <button
+              type="submit"
+              className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600"
+              disabled={!phoneOtpSent} // Disable until OTP is sent
+            >
+              Verify & Register
+            </button>
           </form>
         )}
         <p className="mt-4 text-center text-sm">
