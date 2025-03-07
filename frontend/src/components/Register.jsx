@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react'; // Add useCallback
 import axios from 'axios';
 import { useNavigate, Link } from 'react-router-dom';
 import { auth, RecaptchaVerifier, signInWithPhoneNumber } from '../firebase';
@@ -20,6 +20,25 @@ const Register = () => {
   const validateEmail = (email) => /^[0-9]+@kiit\.ac\.in$/.test(email);
   const validatePhone = (phoneNumber) => /^\d{10}$/.test(phoneNumber);
 
+  const sendPhoneOtp = useCallback(async (phone) => {
+    try {
+      const verifier = new RecaptchaVerifier('recaptcha-container', {
+        size: 'invisible',
+        callback: () => console.log('Recaptcha solved—phone OTP on the way!')
+      }, auth);
+      await verifier.render(); // Ensure it’s ready
+      const fullPhoneNumber = `+91${phone}`;
+      const phoneResult = await signInWithPhoneNumber(auth, fullPhoneNumber, verifier);
+      window.confirmationResult = phoneResult;
+      setPhoneOtpSent(true);
+      console.log('Phone OTP sent to:', fullPhoneNumber);
+      setMessage('Email verified—OTP sent, enter it and set your password!');
+    } catch (err) {
+      console.error('Phone OTP send error:', err);
+      setError(`Failed to send phone OTP—${err.message}`);
+    }
+  }, []);
+
   useEffect(() => {
     if (isSignInWithEmailLink(auth, window.location.href)) {
       const email = window.localStorage.getItem('emailForSignIn');
@@ -31,35 +50,22 @@ const Register = () => {
             setEmail(result.user.email);
             setEmailLinkSent(true);
 
-            // Don’t remove phone yet—use it first!
-            try {
-              window.recaptchaVerifier = new RecaptchaVerifier('recaptcha-container', {
-                size: 'invisible',
-                callback: () => console.log('Recaptcha solved—phone OTP on the way!')
-              }, auth);
-              const fullPhoneNumber = `+91${storedPhone}`;
-              const phoneResult = await signInWithPhoneNumber(auth, fullPhoneNumber, window.recaptchaVerifier);
-              window.confirmationResult = phoneResult;
-              setPhoneOtpSent(true); // Enable fields!
-              console.log('Phone OTP sent to:', fullPhoneNumber);
-              setMessage('Email verified—OTP sent, enter it and set your password!');
-              // Clean up after success
-              window.localStorage.removeItem('emailForSignIn');
-              window.localStorage.removeItem('phoneForSignIn');
-          } catch (err) {
-            console.error('Phone OTP send error:', err);
-            setError(`Failed to send phone OTP—${err.message}`);
-          }
-        })
-        .catch((err) => {
-          console.error('Email sign-in error:', err);
-          setError('Failed to verify email link—gremlins strike again!');
-        });
+            // Send OTP after email verification
+            await sendPhoneOtp(storedPhone);
+
+            // Clean up after success
+            window.localStorage.removeItem('emailForSignIn');
+            window.localStorage.removeItem('phoneForSignIn');
+          })
+          .catch((err) => {
+            console.error('Email sign-in error:', err);
+            setError('Failed to verify email link—gremlins strike again!');
+          });
       } else {
         setError('Missing email or phone—start over, mate!');
       }
     }
-  }, []);
+  }, [sendPhoneOtp]); // Add dependency
 
   const handleSendEmailLink = async (e) => {
     e.preventDefault();
