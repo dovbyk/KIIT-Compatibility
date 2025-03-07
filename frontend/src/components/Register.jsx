@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
 import { useNavigate, Link } from 'react-router-dom';
-import { auth, RecaptchaVerifier, signInWithPhoneNumber, sendEmailVerification } from './firebase';
+import { auth, RecaptchaVerifier, signInWithPhoneNumber, sendEmailVerification } from '../firebase';
 
 const Register = () => {
   const [username, setUsername] = useState('');
