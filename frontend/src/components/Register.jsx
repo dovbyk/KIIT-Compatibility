@@ -2,7 +2,7 @@ import { useState } from 'react';
 import axios from 'axios';
 import { useNavigate, Link } from 'react-router-dom';
 import { auth, RecaptchaVerifier, signInWithPhoneNumber, sendEmailVerification } from '../firebase';
-import { signInAnonymously } from 'firebase/auth'; // Added this!
+import { signInAnonymously, updateEmail } from 'firebase/auth'; // Added this!
 
 const Register = () => {
   const [username, setUsername] = useState('');
@@ -29,7 +29,7 @@ const Register = () => {
 
     try {
       const userCredential = await signInAnonymously(auth);
-      await auth.currentUser.updateEmail(email);
+      await updateEmail(auth.currentUser, email);
       await sendEmailVerification(auth.currentUser, {
         url: 'https://kiit-compatibility.vercel.app/register',
         handleCodeInApp: true
