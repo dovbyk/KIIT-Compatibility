@@ -17,7 +17,7 @@ const Register = () => {
   const [message, setMessage] = useState('');
   const navigate = useNavigate();
 
-  const validateEmail = (email) => /^[0-9]{8}@kiit\.ac\.in$/.test(email);
+  const validateEmail = (email) => /^[0-9]+@kiit\.ac\.in$/.test(email);
   const validatePhone = (phoneNumber) => /^\d{10}$/.test(phoneNumber);
 
   useEffect(() => {
