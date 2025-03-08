@@ -19,25 +19,6 @@ const Register = () => {
   const validateEmail = (email) => /^[0-9]{8}@kiit\.ac\.in$/.test(email);
   const validatePhone = (phoneNumber) => /^\d{10}$/.test(phoneNumber);
 
-  // Initialize reCAPTCHA once on mount
-  useEffect(() => {
-    if (!window.recaptchaVerifier) {
-      window.recaptchaVerifier = new RecaptchaVerifier('recaptcha-container', {
-        size: 'invisible',
-        callback: () => console.log('Recaptcha solved—ready to roll!')
-      }, auth);
-      console.log('reCAPTCHA initialized on mount');
-    }
-    // Cleanup on unmount
-    return () => {
-      if (window.recaptchaVerifier) {
-        window.recaptchaVerifier.clear();
-        delete window.recaptchaVerifier;
-        console.log('reCAPTCHA cleaned up');
-      }
-    };
-  }, []);
-
   const handleSendEmailOtp = async (e) => {
     e.preventDefault();
     if (!gender || !validateEmail(email) || !validatePhone(phoneNumber)) {
@@ -53,10 +34,10 @@ const Register = () => {
       const emailRes = await axios.post(`${apiUrl}/auth/send-email-otp`, { email });
       console.log('Email OTP sent:', emailRes.data);
       setOtpsSent(true);
-      setMessage('Email OTP sent—phone OTP coming up!');
+      setMessage('Email OTP sent—phone OTP next!');
     } catch (err) {
-      console.error('Email OTP send error:', err);
-      setError(`Failed to send email OTP—${err.message}`);
+      console.error('Email OTP error:', err);
+      setError(`Email OTP failed—${err.message}`);
     }
   };
 
@@ -64,15 +45,26 @@ const Register = () => {
     if (otpsSent && phoneNumber) {
       const sendPhoneOtp = async () => {
         try {
-          await window.recaptchaVerifier.render(); // Ensure it’s ready
+          console.log('Starting phone OTP process...');
+          const verifier = new RecaptchaVerifier('recaptcha-container', {
+            size: 'invisible',
+            callback: () => console.log('reCAPTCHA solved!'),
+            'expired-callback': () => console.log('reCAPTCHA expired')
+          }, auth);
+          console.log('reCAPTCHA verifier created');
+
+          const rendered = await verifier.render();
+          console.log('reCAPTCHA rendered, widget ID:', rendered);
+
           const fullPhoneNumber = `+91${phoneNumber}`;
-          const phoneResult = await signInWithPhoneNumber(auth, fullPhoneNumber, window.recaptchaVerifier);
+          console.log('Sending phone OTP to:', fullPhoneNumber);
+          const phoneResult = await signInWithPhoneNumber(auth, fullPhoneNumber, verifier);
           window.confirmationResult = phoneResult;
-          console Pillars console.log('Phone OTP sent to:', fullPhoneNumber);
-          setMessage('OTPs sent to your email and phone—check both!');
+          console.log('Phone OTP sent successfully:', phoneResult);
+          setMessage('OTPs sent to email and phone—check both!');
         } catch (err) {
-          console.error('Phone OTP send error:', err);
-          setError(`Failed to send phone OTP—${err.message}`);
+          console.error('Phone OTP error:', err);
+          setError(`Phone OTP failed—${err.message}`);
         }
       };
       sendPhoneOtp();
@@ -103,14 +95,14 @@ const Register = () => {
         password,
         isVerified: true
       };
-      console.log('Sending to backend:', payload);
+      console.log('Registering user:', payload);
       const res = await axios.post(`${apiUrl}/auth/register-firebase`, payload);
-      console.log('Backend response:', res.data);
+      console.log('Registration response:', res.data);
       setMessage(res.data.msg);
       setTimeout(() => navigate('/'), 2000);
     } catch (err) {
-      console.error('Verification error:', err.response?.data?.error || err.message);
-      setError(`Verification failed—${err.response?.data?.error || err.message}`);
+      console.error('Verification error:', err);
+      setError(`Verification failed—${err.message || err.response?.data?.error}`);
     }
   };
 
