@@ -1,5 +1,5 @@
-import { initializeApp } from 'firebase/app';
-import { getAuth, RecaptchaVerifier, signInWithPhoneNumber, sendEmailVerification, signInAnonymously } from 'firebase/auth';
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDbvhMead4EtiK4IDTzjCwnEnslPm0Wpm4",
@@ -10,6 +10,6 @@ const firebaseConfig = {
   appId: "1:836272832264:web:5d5703058857e7c6bfb6bd"
 };
 
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export { RecaptchaVerifier, signInWithPhoneNumber, sendEmailVerification, signInAnonymously };
+firebase.initializeApp(firebaseConfig);
+export const auth = firebase.auth();
+export { RecaptchaVerifier, signInWithPhoneNumber };
