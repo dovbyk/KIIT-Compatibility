@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'; // Add useEffect
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useNavigate, Link } from 'react-router-dom';
 import { auth, RecaptchaVerifier, signInWithPhoneNumber } from '../firebase';
@@ -20,7 +20,7 @@ const Register = () => {
   const validateEmail = (email) => /^[0-9]{8}@kiit\.ac\.in$/.test(email);
   const validatePhone = (phoneNumber) => /^\d{10}$/.test(phoneNumber);
 
-  const handleSendOtps = async (e) => {
+  const handleSendEmailOtp = async (e) => {
     e.preventDefault();
     if (!gender || !validateEmail(email) || !validatePhone(phoneNumber)) {
       setError('Fill all fields correctly—email like 22012345@kiit.ac.in, phone 10 digits!');
@@ -32,31 +32,43 @@ const Register = () => {
     console.log('Using API URL:', apiUrl);
 
     try {
-      // Send Email OTP
+      // Send Email OTP only
       const emailRes = await axios.post(`${apiUrl}/auth/send-email-otp`, { email });
       console.log('Email OTP sent:', emailRes.data);
 
-      // Send Phone OTP
-      if (!recaptchaRef.current) {
-        throw new Error('reCAPTCHA container not ready—refresh and try again!');
-      }
-      const verifier = new RecaptchaVerifier(recaptchaRef.current, {
-        size: 'invisible',
-        callback: () => console.log('Recaptcha solved—phone OTP on the way!')
-      }, auth);
-      await verifier.render(); // Ensure DOM is ready
-      const fullPhoneNumber = `+91${phoneNumber}`;
-      const phoneResult = await signInWithPhoneNumber(auth, fullPhoneNumber, verifier);
-      window.confirmationResult = phoneResult;
-      console.log('Phone OTP sent to:', fullPhoneNumber);
-
       setOtpsSent(true); // Switch to OTP/password page
-      setMessage('OTPs sent to your email and phone—check both!');
+      setMessage('Email OTP sent—phone OTP coming up!');
     } catch (err) {
-      console.error('OTP send error:', err);
-      setError(`Failed to send OTPs—${err.message}`);
+      console.error('Email OTP send error:', err);
+      setError(`Failed to send email OTP—${err.message}`);
     }
   };
+
+  useEffect(() => {
+    if (otpsSent && phoneNumber) {
+      const sendPhoneOtp = async () => {
+        try {
+          if (!recaptchaRef.current) {
+            throw new Error('reCAPTCHA container not ready—refresh and try again!');
+          }
+          const verifier = new RecaptchaVerifier(recaptchaRef.current, {
+            size: 'invisible',
+            callback: () => console.log('Recaptcha solved—phone OTP on the way!')
+          }, auth);
+          await verifier.render(); // Ensure DOM is ready
+          const fullPhoneNumber = `+91${phoneNumber}`;
+          const phoneResult = await signInWithPhoneNumber(auth, fullPhoneNumber, verifier);
+          window.confirmationResult = phoneResult;
+          console.log('Phone OTP sent to:', fullPhoneNumber);
+          setMessage('OTPs sent to your email and phone—check both!');
+        } catch (err) {
+          console.error('Phone OTP send error:', err);
+          setError(`Failed to send phone OTP—${err.message}`);
+        }
+      };
+      sendPhoneOtp();
+    }
+  }, [otpsSent, phoneNumber]);
 
   const handleVerifyAndRegister = async (e) => {
     e.preventDefault();
@@ -103,7 +115,7 @@ const Register = () => {
         {error && <p className="text-red-500 mb-4 text-center">{error}</p>}
         {message && <p className="text-green-500 mb-4 text-center">{message}</p>}
         {!otpsSent ? (
-          <form onSubmit={handleSendOtps}>
+          <form onSubmit={handleSendEmailOtp}>
             <div className="mb-4">
               <label className="block text-gray-700 mb-1">Username</label>
               <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full p-2 border rounded" required />
