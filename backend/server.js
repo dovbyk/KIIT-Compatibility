@@ -16,7 +16,7 @@ app.use(cors({
 app.use(express.json());
 
 // MongoDB connection
-const mongoUri = process.env.MONGODB_URI;
+const mongoUri = process.env.MONGO_URI;
 if (!mongoUri) {
   console.error('MONGODB_URI is not defined—check Render env vars!');
   process.exit(1);
