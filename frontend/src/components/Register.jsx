@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react'; // Add useEffect
 import axios from 'axios';
 import { useNavigate, Link } from 'react-router-dom';
 import { auth, RecaptchaVerifier, signInWithPhoneNumber } from '../firebase';
@@ -28,7 +28,8 @@ const Register = () => {
     }
 
     const apiUrl = process.env.REACT_APP_API_URL || 'https://kiit-compatibility-backend.onrender.com';
-    console.log('API URL:', apiUrl); // Debug
+    console.log('Raw REACT_APP_API_URL:', process.env.REACT_APP_API_URL);
+    console.log('Using API URL:', apiUrl);
 
     try {
       // Send Email OTP
@@ -36,21 +37,24 @@ const Register = () => {
       console.log('Email OTP sent:', emailRes.data);
 
       // Send Phone OTP
+      if (!recaptchaRef.current) {
+        throw new Error('reCAPTCHA container not ready—refresh and try again!');
+      }
       const verifier = new RecaptchaVerifier(recaptchaRef.current, {
         size: 'invisible',
         callback: () => console.log('Recaptcha solved—phone OTP on the way!')
       }, auth);
-      await verifier.render();
+      await verifier.render(); // Ensure DOM is ready
       const fullPhoneNumber = `+91${phoneNumber}`;
       const phoneResult = await signInWithPhoneNumber(auth, fullPhoneNumber, verifier);
       window.confirmationResult = phoneResult;
       console.log('Phone OTP sent to:', fullPhoneNumber);
 
-      setOtpsSent(true);
+      setOtpsSent(true); // Switch to OTP/password page
       setMessage('OTPs sent to your email and phone—check both!');
     } catch (err) {
       console.error('OTP send error:', err);
-      setError(`Failed to send OTPs—${err.response?.data?.error || err.message}`);
+      setError(`Failed to send OTPs—${err.message}`);
     }
   };
 
