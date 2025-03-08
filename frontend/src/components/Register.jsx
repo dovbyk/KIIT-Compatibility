@@ -61,7 +61,7 @@ const Register = () => {
       return;
     }
 
-    const apiUrl = process.env.REACT_APP_API_URL || 'https://compatibility-backend.onrender.com';
+    const apiUrl = process.env.REACT_APP_API_URL || 'https://kiit-compatibility-backend.onrender.com';
 
     try {
       // Verify Email OTP with backend
