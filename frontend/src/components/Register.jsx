@@ -20,55 +20,80 @@ const Register = () => {
   const validateEmail = (email) => /^[0-9]{8}@kiit\.ac\.in$/.test(email);
   const validatePhone = (phoneNumber) => /^\d{10}$/.test(phoneNumber);
 
-  const handleSendEmailOtp = async (e) => {
-    e.preventDefault();
-    if (!gender || !validateEmail(email) || !validatePhone(phoneNumber)) {
-      setError('Fill all fields correctly—email like 22012345@kiit.ac.in, phone 10 digits!');
-      return;
+// In the first form submission handler
+const handleSendEmailOtp = async (e) => {
+  e.preventDefault();
+  if (!gender || !validateEmail(email) || !validatePhone(phoneNumber)) {
+    setError('Fill all fields correctly—email like 22012345@kiit.ac.in, phone 10 digits!');
+    return;
+  }
+
+  const apiUrl = process.env.REACT_APP_API_URL || 'https://kiit-compatibility-backend.onrender.com';
+  
+  try {
+    // Send Email OTP
+    const emailRes = await axios.post(`${apiUrl}/auth/send-email-otp`, { email });
+    console.log('Email OTP sent:', emailRes.data);
+    
+    // Create reCAPTCHA here before setting otpsSent
+    if (window.recaptchaVerifier) {
+      window.recaptchaVerifier.clear();
     }
-
-    const apiUrl = process.env.REACT_APP_API_URL || 'https://kiit-compatibility-backend.onrender.com';
-    console.log('Raw REACT_APP_API_URL:', process.env.REACT_APP_API_URL);
-    console.log('Using API URL:', apiUrl);
-
+    window.recaptchaVerifier = new RecaptchaVerifier('recaptcha-container', {
+      size: 'invisible',
+      callback: () => {
+        console.log('Recaptcha solved');
+      }
+    }, auth);
+    
+    // Send Phone OTP
     try {
-      // Send Email OTP only
-      const emailRes = await axios.post(`${apiUrl}/auth/send-email-otp`, { email });
-      console.log('Email OTP sent:', emailRes.data);
-
-      setOtpsSent(true); // Switch to OTP/password page
-      setMessage('Email OTP sent—phone OTP coming up!');
-    } catch (err) {
-      console.error('Email OTP send error:', err);
-      setError(`Failed to send email OTP—${err.message}`);
+      const fullPhoneNumber = `+91${phoneNumber}`;
+      const phoneResult = await signInWithPhoneNumber(auth, fullPhoneNumber, window.recaptchaVerifier);
+      window.confirmationResult = phoneResult;
+      console.log('Phone OTP sent to:', fullPhoneNumber);
+      setOtpsSent(true); // Only set to true if both operations succeed
+      setMessage('OTPs sent to your email and phone—check both!');
+    } catch (phoneErr) {
+      console.error('Phone OTP send error:', phoneErr);
+      setError(`Failed to send phone OTP—${phoneErr.message}`);
     }
-  };
+  } catch (err) {
+    console.error('Email OTP send error:', err);
+    setError(`Failed to send email OTP—${err.message}`);
+  }
+};
 
-  useEffect(() => {
-    if (otpsSent && phoneNumber) {
-      const sendPhoneOtp = async () => {
-        try {
-          if (!recaptchaRef.current) {
-            throw new Error('reCAPTCHA container not ready—refresh and try again!');
-          }
-          const verifier = new RecaptchaVerifier(recaptchaRef.current, {
-            size: 'invisible',
-            callback: () => console.log('Recaptcha solved—phone OTP on the way!')
-          }, auth);
-          await verifier.render(); // Ensure DOM is ready
-          const fullPhoneNumber = `+91${phoneNumber}`;
-          const phoneResult = await signInWithPhoneNumber(auth, fullPhoneNumber, verifier);
-          window.confirmationResult = phoneResult;
-          console.log('Phone OTP sent to:', fullPhoneNumber);
-          setMessage('OTPs sent to your email and phone—check both!');
-        } catch (err) {
-          console.error('Phone OTP send error:', err);
-          setError(`Failed to send phone OTP—${err.message}`);
+// Modify your useEffect for phone OTP
+useEffect(() => {
+  if (otpsSent && phoneNumber) {
+    const sendPhoneOtp = async () => {
+      try {
+        // Clear any existing reCAPTCHA to avoid conflicts
+        if (window.recaptchaVerifier) {
+          window.recaptchaVerifier.clear();
+          delete window.recaptchaVerifier;
         }
-      };
-      sendPhoneOtp();
-    }
-  }, [otpsSent, phoneNumber]);
+        
+        // Create a new reCAPTCHA instance
+        window.recaptchaVerifier = new RecaptchaVerifier('recaptcha-container', {
+          size: 'invisible',
+          callback: () => console.log('Recaptcha solved—phone OTP on the way!')
+        }, auth);
+        
+        const fullPhoneNumber = `+91${phoneNumber}`;
+        const phoneResult = await signInWithPhoneNumber(auth, fullPhoneNumber, window.recaptchaVerifier);
+        window.confirmationResult = phoneResult;
+        console.log('Phone OTP sent to:', fullPhoneNumber);
+        setMessage('OTPs sent to your email and phone—check both!');
+      } catch (err) {
+        console.error('Phone OTP send error:', err);
+        setError(`Failed to send phone OTP—${err.message}`);
+      }
+    };
+    sendPhoneOtp();
+  }
+}, [otpsSent, phoneNumber]);
 
   const handleVerifyAndRegister = async (e) => {
     e.preventDefault();
@@ -142,7 +167,10 @@ const Register = () => {
                 <option value="female">Female</option>
               </select>
             </div>
-            <div ref={recaptchaRef} id="recaptcha-container"></div>
+
+            
+            <div id="recaptcha-container"></div>
+            
             <button type="submit" className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600">Register</button>
           </form>
         ) : (
@@ -159,6 +187,7 @@ const Register = () => {
               <label className="block text-gray-700 mb-1">Set Password</label>
               <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-2 border rounded" required />
             </div>
+            <div id="recaptcha-container"></div>
             <button type="submit" className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600">Verify & Register</button>
           </form>
         )}
