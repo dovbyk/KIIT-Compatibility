@@ -2,28 +2,41 @@ const express = require('express');
 const mongoose = require('mongoose');
 const nodemailer = require('nodemailer');
 const cors = require('cors');
-const User = require('./models/User'); // Your User model
+const User = require('./models/User');
 
 const app = express();
-app.use(cors());
+
+// CORS config
+app.use(cors({
+  origin: 'https://kiit-compatibility.vercel.app', // Your frontend
+  methods: ['GET', 'POST'], // Allow these methods
+  allowedHeaders: ['Content-Type'] // Allow this header
+}));
+
 app.use(express.json());
 
-// MongoDB connection (unchanged)
-mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true });
+// MongoDB connection
+const mongoUri = process.env.MONGODB_URI;
+if (!mongoUri) {
+  console.error('MONGODB_URI is not defined—check Render env vars!');
+  process.exit(1);
+}
+mongoose.connect(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => console.log('MongoDB connected—ready to roll!'))
+  .catch(err => console.error('MongoDB connection error:', err));
 
 // Nodemailer setup
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: process.env.EMAIL_USER, // Your Gmail
-    pass: process.env.EMAIL_PASS  // Your App Password
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
   }
 });
 
-// Generate 6-digit OTP
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
+const otpStore = new Map();
 
-// Send Email OTP
 app.post('/auth/send-email-otp', async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'Email required' });
@@ -38,16 +51,27 @@ app.post('/auth/send-email-otp', async (req, res) => {
 
   try {
     await transporter.sendMail(mailOptions);
-    // Store OTP temporarily (e.g., in-memory or DB)
-    // For simplicity, we’ll pass it back to frontend to store—production needs a DB!
-    res.json({ msg: 'Email OTP sent', otp }); // Temp for dev
+    otpStore.set(email, { otp, expires: Date.now() + 10 * 60 * 1000 });
+    res.json({ msg: 'Email OTP sent' });
   } catch (err) {
     console.error('Email send error:', err);
     res.status(500).json({ error: 'Failed to send email OTP' });
   }
 });
 
-// Register Endpoint (unchanged from earlier)
+app.post('/auth/verify-email-otp', async (req, res) => {
+  const { email, otp } = req.body;
+  const stored = otpStore.get(email);
+  if (!stored) return res.status(400).json({ error: 'No OTP found—send it first!' });
+  if (Date.now() > stored.expires) {
+    otpStore.delete(email);
+    return res.status(400).json({ error: 'OTP expired—try again!' });
+  }
+  if (stored.otp !== otp) return res.status(400).json({ error: 'Invalid OTP' });
+  otpStore.delete(email);
+  res.json({ msg: 'Email OTP verified' });
+});
+
 app.post('/auth/register-firebase', async (req, res) => {
   const { username, email, phoneNumber, gender, password, isVerified } = req.body;
   try {
@@ -55,6 +79,7 @@ app.post('/auth/register-firebase', async (req, res) => {
     await user.save();
     res.json({ msg: 'User registered successfully—welcome aboard!' });
   } catch (err) {
+    console.error('Registration error:', err);
     res.status(500).json({ error: 'Registration failed' });
   }
 });
