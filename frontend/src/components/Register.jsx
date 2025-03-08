@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import axios from 'axios';
 import { useNavigate, Link } from 'react-router-dom';
 import { auth, RecaptchaVerifier, signInWithPhoneNumber } from '../firebase';
@@ -16,9 +16,8 @@ const Register = () => {
   const [message, setMessage] = useState('');
   const navigate = useNavigate();
   const recaptchaRef = useRef(null);
-  const [storedEmailOtp, setStoredEmailOtp] = useState(''); // Temp OTP storage
 
-  const validateEmail = (email) => /^[0-9]+@kiit\.ac\.in$/.test(email);
+  const validateEmail = (email) => /^[0-9]{8}@kiit\.ac\.in$/.test(email);
   const validatePhone = (phoneNumber) => /^\d{10}$/.test(phoneNumber);
 
   const handleSendOtps = async (e) => {
@@ -28,11 +27,13 @@ const Register = () => {
       return;
     }
 
+    const apiUrl = process.env.REACT_APP_API_URL || 'https://compatibility-backend.onrender.com';
+    console.log('API URL:', apiUrl); // Debug
+
     try {
       // Send Email OTP
-      const emailRes = await axios.post(`${process.env.REACT_APP_API_URL}/auth/send-email-otp`, { email });
+      const emailRes = await axios.post(`${apiUrl}/auth/send-email-otp`, { email });
       console.log('Email OTP sent:', emailRes.data);
-      setStoredEmailOtp(emailRes.data.otp); // Store for verification (temp)
 
       // Send Phone OTP
       const verifier = new RecaptchaVerifier(recaptchaRef.current, {
@@ -49,7 +50,7 @@ const Register = () => {
       setMessage('OTPs sent to your email and phone—check both!');
     } catch (err) {
       console.error('OTP send error:', err);
-      setError(`Failed to send OTPs—${err.message}`);
+      setError(`Failed to send OTPs—${err.response?.data?.error || err.message}`);
     }
   };
 
@@ -60,14 +61,14 @@ const Register = () => {
       return;
     }
 
-    try {
-      // Verify Email OTP (simple check—production needs backend validation)
-      if (emailOtp !== storedEmailOtp) {
-        setError('Invalid email OTP—check again, mate!');
-        return;
-      }
+    const apiUrl = process.env.REACT_APP_API_URL || 'https://compatibility-backend.onrender.com';
 
-      // Verify Phone OTP
+    try {
+      // Verify Email OTP with backend
+      const emailVerifyRes = await axios.post(`${apiUrl}/auth/verify-email-otp`, { email, otp: emailOtp });
+      console.log('Email OTP verified:', emailVerifyRes.data);
+
+      // Verify Phone OTP with Firebase
       const phoneCredential = await window.confirmationResult.confirm(phoneOtp);
       console.log('Phone verified:', phoneCredential.user.phoneNumber);
 
@@ -81,13 +82,13 @@ const Register = () => {
         isVerified: true
       };
       console.log('Sending to backend:', payload);
-      const res = await axios.post(`${process.env.REACT_APP_API_URL}/auth/register-firebase`, payload);
+      const res = await axios.post(`${apiUrl}/auth/register-firebase`, payload);
       console.log('Backend response:', res.data);
       setMessage(res.data.msg);
       setTimeout(() => navigate('/'), 2000);
     } catch (err) {
-      console.error('Verification error:', err);
-      setError(`Verification failed—${err.message}`);
+      console.error('Verification error:', err.response?.data?.error || err.message);
+      setError(`Verification failed—${err.response?.data?.error || err.message}`);
     }
   };
 
