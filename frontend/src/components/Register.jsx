@@ -1,148 +1,93 @@
-// This implementation builds on your existing Register.jsx component
-// Focus on the key changes needed for the verification flow
-
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate, Link } from 'react-router-dom';
 import { auth, RecaptchaVerifier, signInWithPhoneNumber } from '../firebase';
 
 const Register = () => {
-  // Form fields
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [gender, setGender] = useState('');
-  const [password, setPassword] = useState('');
-  
-  // Verification states
-  const [isEmailOtpSent, setIsEmailOtpSent] = useState(false);
-  const [isPhoneOtpSent, setIsPhoneOtpSent] = useState(false);
+  const [otpsSent, setOtpsSent] = useState(false);
   const [emailOtp, setEmailOtp] = useState('');
   const [phoneOtp, setPhoneOtp] = useState('');
-  const [verificationStep, setVerificationStep] = useState(1); // 1: Initial form, 2: OTP verification
-  
-  // UI states
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [loading, setLoading] = useState(false);
-  
   const navigate = useNavigate();
 
-  // Validators
   const validateEmail = (email) => /^[0-9]{8}@kiit\.ac\.in$/.test(email);
-  const validatePhone = (phone) => /^\d{10}$/.test(phone);
+  const validatePhone = (phoneNumber) => /^\d{10}$/.test(phoneNumber);
 
-  // Initial form submission - starts verification process
-  const handleStartVerification = async (e) => {
+  const handleSendEmailOtp = async (e) => {
     e.preventDefault();
-    setError('');
-    setLoading(true);
-    
-    // Validate all required fields
-    if (!username || !email || !phoneNumber || !gender || !password) {
-      setError('All fields are required');
-      setLoading(false);
+    if (!gender || !validateEmail(email) || !validatePhone(phoneNumber)) {
+      setError('Fill all fields correctly—email like 22012345@kiit.ac.in, phone 10 digits!');
       return;
     }
-    
-    if (!validateEmail(email)) {
-      setError('Email must be in format: 22012345@kiit.ac.in');
-      setLoading(false);
-      return;
-    }
-    
-    if (!validatePhone(phoneNumber)) {
-      setError('Phone number must be 10 digits');
-      setLoading(false);
-      return;
-    }
-    
+
+    const apiUrl = process.env.REACT_APP_API_URL || 'https://kiit-compatibility-backend.onrender.com';
+    console.log('Raw REACT_APP_API_URL:', process.env.REACT_APP_API_URL);
+    console.log('Using API URL:', apiUrl);
+
     try {
-      // 1. Check if email/phone already exists
-      const checkRes = await axios.post('/api/auth/check-user', { email, phoneNumber });
-      
-      // 2. Send email OTP
-      await sendEmailOtp();
-      
-      // 3. Setup phone verification
-      setupPhoneVerification();
-      
-      // Move to next step
-      setVerificationStep(2);
+      const emailRes = await axios.post(`${apiUrl}/auth/send-email-otp`, { email });
+      console.log('Email OTP sent:', emailRes.data);
+      setOtpsSent(true);
+      setMessage('Email OTP sent—phone OTP next!');
     } catch (err) {
-      console.error('Verification setup error:', err);
-      setError(err.response?.data?.msg || 'Error starting verification process');
-    } finally {
-      setLoading(false);
+      console.error('Email OTP error:', err);
+      setError(`Email OTP failed—${err.message}`);
     }
   };
 
-  // Send email OTP
-  const sendEmailOtp = async () => {
-    try {
-      const res = await axios.post('/api/auth/send-email-otp', { email });
-      setIsEmailOtpSent(true);
-      setMessage(prev => prev + 'Email OTP sent successfully. ');
-    } catch (err) {
-      throw new Error(err.response?.data?.msg || 'Failed to send email OTP');
-    }
-  };
+  useEffect(() => {
+    if (otpsSent && phoneNumber) {
+      const sendPhoneOtp = async () => {
+        try {
+          console.log('Starting phone OTP process...');
+          const verifier = new RecaptchaVerifier('recaptcha-container', {
+            size: 'invisible',
+            callback: () => console.log('reCAPTCHA solved!'),
+            'expired-callback': () => console.log('reCAPTCHA expired')
+          }, auth);
+          console.log('reCAPTCHA verifier created');
 
-  // Setup Firebase phone verification
-  const setupPhoneVerification = async () => {
-    try {
-      // Create invisible reCAPTCHA
-      const verifier = new RecaptchaVerifier('recaptcha-container', {
-        size: 'invisible',
-        callback: () => console.log('reCAPTCHA verified')
-      }, auth);
-      
-      // Render the reCAPTCHA
-      await verifier.render();
-      
-      // Send OTP to phone
-      const fullPhone = `+91${phoneNumber}`;
-      const confirmationResult = await signInWithPhoneNumber(auth, fullPhone, verifier);
-      
-      // Store confirmation result for later verification
-      window.confirmationResult = confirmationResult;
-      
-      setIsPhoneOtpSent(true);
-      setMessage(prev => prev + 'Phone OTP sent successfully.');
-    } catch (err) {
-      console.error('Phone verification error:', err);
-      throw new Error('Failed to send phone OTP');
-    }
-  };
+          const rendered = await verifier.render();
+          console.log('reCAPTCHA rendered, widget ID:', rendered);
 
-  // Final form submission - verify OTPs and register user
+          const fullPhoneNumber = `+91${phoneNumber}`;
+          console.log('Sending phone OTP to:', fullPhoneNumber);
+          const phoneResult = await signInWithPhoneNumber(auth, fullPhoneNumber, verifier);
+          window.confirmationResult = phoneResult;
+          console.log('Phone OTP sent successfully:', phoneResult);
+          setMessage('OTPs sent to email and phone—check both!');
+        } catch (err) {
+          console.error('Phone OTP error:', err);
+          setError(`Phone OTP failed—${err.message}`);
+        }
+      };
+      sendPhoneOtp();
+    }
+  }, [otpsSent, phoneNumber]);
+
   const handleVerifyAndRegister = async (e) => {
     e.preventDefault();
-    setError('');
-    setLoading(true);
-    
-    if (!emailOtp || !phoneOtp) {
-      setError('Both OTPs are required');
-      setLoading(false);
+    if (!password) {
+      setError('Set a password—don’t leave us guessing!');
       return;
     }
-    
+
+    const apiUrl = process.env.REACT_APP_API_URL || 'https://kiit-compatibility-backend.onrender.com';
+
     try {
-      // 1. Verify email OTP
-      const emailVerifyRes = await axios.post('/api/auth/verify-email-otp', {
-        email,
-        otp: emailOtp
-      });
-      
-      // 2. Verify phone OTP
-      if (!window.confirmationResult) {
-        throw new Error('Phone verification session expired');
-      }
-      
+      const emailVerifyRes = await axios.post(`${apiUrl}/auth/verify-email-otp`, { email, otp: emailOtp });
+      console.log('Email OTP verified:', emailVerifyRes.data);
+
       const phoneCredential = await window.confirmationResult.confirm(phoneOtp);
-      
-      // 3. Register user after both verifications are successful
-      const registerPayload = {
+      console.log('Phone verified:', phoneCredential.user.phoneNumber);
+
+      const payload = {
         username,
         email,
         phoneNumber: `+91${phoneNumber}`,
@@ -150,164 +95,74 @@ const Register = () => {
         password,
         isVerified: true
       };
-      
-      const registerRes = await axios.post('/api/auth/register', registerPayload);
-      
-      // Success - show message and redirect to login
-      setMessage('Registration successful! Redirecting to login...');
-      setTimeout(() => navigate('/login'), 3000);
+      console.log('Registering user:', payload);
+      const res = await axios.post(`${apiUrl}/auth/register-firebase`, payload);
+      console.log('Registration response:', res.data);
+      setMessage(res.data.msg);
+      setTimeout(() => navigate('/'), 2000);
     } catch (err) {
-      console.error('Verification/registration error:', err);
-      setError(err.response?.data?.msg || 'Verification failed. Please try again.');
-    } finally {
-      setLoading(false);
+      console.error('Verification error:', err);
+      setError(`Verification failed—${err.message || err.response?.data?.error}`);
     }
   };
 
-  // Render the appropriate form based on verification step
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100">
-      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-        <h2 className="text-2xl font-bold mb-6 text-center">Create Account</h2>
-        
-        {/* Error and success messages */}
-        {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">{error}</div>}
-        {message && <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">{message}</div>}
-        
-        {/* Initial registration form */}
-        {verificationStep === 1 && (
-          <form onSubmit={handleStartVerification}>
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="bg-white p-6 rounded-lg shadow-md w-full max-w-sm">
+        <h2 className="text-2xl font-bold mb-4 text-center">Register</h2>
+        {error && <p className="text-red-500 mb-4 text-center">{error}</p>}
+        {message && <p className="text-green-500 mb-4 text-center">{message}</p>}
+        {!otpsSent ? (
+          <form onSubmit={handleSendEmailOtp}>
             <div className="mb-4">
-              <label className="block text-gray-700 mb-2">Username</label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="w-full p-3 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Your username"
-                required
-              />
+              <label className="block text-gray-700 mb-1">Username</label>
+              <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full p-2 border rounded" required />
             </div>
-            
             <div className="mb-4">
-              <label className="block text-gray-700 mb-2">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full p-3 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="22012345@kiit.ac.in"
-                required
-              />
+              <label className="block text-gray-700 mb-1">Email (e.g., 22012345@kiit.ac.in)</label>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-2 border rounded" required />
             </div>
-            
             <div className="mb-4">
-              <label className="block text-gray-700 mb-2">Phone Number</label>
+              <label className="block text-gray-700 mb-1">Phone Number (10 digits)</label>
               <div className="flex">
                 <span className="inline-flex items-center px-3 text-gray-700 bg-gray-200 border border-r-0 rounded-l">+91</span>
-                <input
-                  type="text"
-                  value={phoneNumber}
-                  onChange={(e) => {
-                    const value = e.target.value.replace(/\D/g, '');
-                    if (value.length <= 10) setPhoneNumber(value);
-                  }}
-                  className="w-full p-3 border rounded-r focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="10-digit number"
-                  required
-                />
+                <input type="text" value={phoneNumber} onChange={(e) => {
+                  const value = e.target.value.replace(/\D/g, '');
+                  if (value.length <= 10) setPhoneNumber(value);
+                }} className="w-full p-2 border rounded-r" required />
               </div>
             </div>
-            
-            <div className="mb-4">
-              <label className="block text-gray-700 mb-2">Gender</label>
-              <select
-                value={gender}
-                onChange={(e) => setGender(e.target.value)}
-                className="w-full p-3 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              >
+            <div className="mb-6">
+              <label className="block text-gray-700 mb-1">Gender</label>
+              <select value={gender} onChange={(e) => setGender(e.target.value)} className="w-full p-2 border rounded" required>
                 <option value="">Select Gender</option>
                 <option value="male">Male</option>
                 <option value="female">Female</option>
               </select>
             </div>
-            
-            <div className="mb-6">
-              <label className="block text-gray-700 mb-2">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full p-3 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Create a password"
-                required
-              />
-            </div>
-            
-            {/* reCAPTCHA container */}
             <div id="recaptcha-container"></div>
-            
-            <button
-              type="submit"
-              className="w-full bg-blue-600 text-white p-3 rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200"
-              disabled={loading}
-            >
-              {loading ? 'Processing...' : 'Register'}
-            </button>
-            
-            <p className="mt-4 text-center text-gray-600">
-              Already have an account? <Link to="/login" className="text-blue-600 hover:underline">Sign in</Link>
-            </p>
+            <button type="submit" className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600">Register</button>
           </form>
-        )}
-        
-        {/* OTP verification form */}
-        {verificationStep === 2 && (
+        ) : (
           <form onSubmit={handleVerifyAndRegister}>
             <div className="mb-4">
-              <label className="block text-gray-700 mb-2">Email OTP</label>
-              <input
-                type="text"
-                value={emailOtp}
-                onChange={(e) => setEmailOtp(e.target.value)}
-                className="w-full p-3 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter OTP sent to your email"
-                required
-              />
+              <label className="block text-gray-700 mb-1">Email OTP</label>
+              <input type="text" value={emailOtp} onChange={(e) => setEmailOtp(e.target.value)} className="w-full p-2 border rounded" required />
             </div>
-            
-            <div className="mb-6">
-              <label className="block text-gray-700 mb-2">Phone OTP</label>
-              <input
-                type="text"
-                value={phoneOtp}
-                onChange={(e) => setPhoneOtp(e.target.value)}
-                className="w-full p-3 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter OTP sent to your phone"
-                required
-              />
+            <div className="mb-4">
+              <label className="block text-gray-700 mb-1">Phone OTP</label>
+              <input type="text" value={phoneOtp} onChange={(e) => setPhoneOtp(e.target.value)} className="w-full p-2 border rounded" required />
             </div>
-            
-            <button
-              type="submit"
-              className="w-full bg-blue-600 text-white p-3 rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200"
-              disabled={loading}
-            >
-              {loading ? 'Verifying...' : 'Verify & Complete Registration'}
-            </button>
-            
-            <p className="mt-4 text-center text-gray-600">
-              <button 
-                type="button"
-                onClick={() => setVerificationStep(1)} 
-                className="text-blue-600 hover:underline"
-              >
-                Back to registration
-              </button>
-            </p>
+            <div className="mb-4">
+              <label className="block text-gray-700 mb-1">Set Password</label>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-2 border rounded" required />
+            </div>
+            <button type="submit" className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600">Verify & Register</button>
           </form>
         )}
+        <p className="mt-4 text-center text-sm">
+          Already have an account? <Link to="/" className="text-blue-500 hover:underline">Login</Link>
+        </p>
       </div>
     </div>
   );
